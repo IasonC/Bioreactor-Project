@@ -1,0 +1,141 @@
+// DRAFT 9 FINAL - 14 Dec 2020
+// Iason Chaimalas
+
+#include <stdio.h>
+#include <string.h>
+#include <LiquidCrystal.h>
+
+LiquidCrystal lcd(12, 11, 7, 8, 9, 10); // set up LCD conn to Arduino
+	// declare pins - 12 & 11 comm, 7-10 disp. 4-bit inputs
+
+static const int tPin = 5; // pin5 = PWM and stirrer in SimAVR simulator
+static const int photointerrupter = 2; // Pin2 on SimAVR
+int pwm;
+int SetpointRPM = 1000; // manually set RPM here (auto in SimAVR)
+double TrueRPM;
+
+/*unsigned long int currentTime;
+unsigned long int previousTime = 0;
+unsigned long int sampleTime, prevSampleTime;
+unsigned long int timetick;
+volatile int ticker = 0;
+int ticknum, prevTicker = 0;*/
+
+unsigned long currentTimePhoto; // timing to get TrueRPM
+unsigned long previousTimePhoto = 0; // subtract from currentTimePhoto
+// to get time difference since last collection of data over 1000ms
+volatile unsigned long ticker = 0, firstTick = 0; // ticks +1 for every Rising pin2
+volatile unsigned long tickNum; // ticks in (currentTimePhoto - previousTimePhoto) time
+volatile unsigned long prevTicker = 0; // prev tickNum at last collection
+
+// PID
+unsigned long currentTimePID;
+unsigned long prevTimePID = 0;
+int elapsedPID;
+double error = 0;
+double prevError = 0;
+double errorIntegral;
+double errorDeriv;
+
+//unsigned long int timeStart, timeEnd;
+//float timeElapsed;
+//float error, previousError;
+//float actuatingSignal, controlledVariable; // input & output
+//float cumulativeError, rateError;
+//float input;
+
+void setup() {
+  pinMode(tPin, OUTPUT);
+  pinMode(photointerrupter, INPUT);
+  Serial.begin(9600); // begin comm. between Arduino and Serial:
+  Serial.println("\nSystem ready for user input");
+ 
+  attachInterrupt(digitalPinToInterrupt(photointerrupter), tickCount, RISING);
+  
+  lcd.begin(16, 2);
+}
+
+void loop() {
+  lcd.print("Setpoint: ");
+  lcd.print(SetpointRPM);
+  lcd.setCursor(0,1);
+  lcd.print("Current: ");
+  lcd.print(TrueRPM);
+  lcd.setCursor(0,0);
+  
+  
+  currentTimePhoto = millis();
+  /*time = millis();
+  if (firstTick == 1) {
+    time1 = time;
+    firstTick = 0;
+  }*/
+  unsigned long interval = currentTimePhoto - previousTimePhoto;
+
+  if (interval >= 2000) {
+    //TrueRPM = tickNum * 30;
+    if (interval > 0) {
+      TrueRPM = ticker * 30000.0 / interval;
+      Serial.print("TrueRPM: ");
+      Serial.print(TrueRPM);
+      previousTimePhoto = currentTimePhoto;
+      ticker = 0;
+    }
+    else {
+      TrueRPM = 0;
+    }
+  }
+  // PID
+  currentTimePID = millis();
+  elapsedPID = (int)(currentTimePID - prevTimePID);
+  Serial.println(elapsedPID);
+  error = SetpointRPM - TrueRPM;
+
+  /*
+  Serial.print("Error:");
+  Serial.print(error);
+  Serial.print("| elapsedPID:");
+  Serial.print(elapsedPID);
+  */
+  errorIntegral = error * (elapsedPID / 100);
+  //Serial.print("| Error Int:");
+  //Serial.println(errorIntegral);
+  errorDeriv = -(prevError - error)/elapsedPID;
+
+  prevError = error;
+  prevTimePID = currentTimePID;
+
+  if (error > 10 || error < -10) {
+    /*
+    Serial.print("Error:");
+    Serial.print(error);
+    Serial.print("| Error Integral:");
+    Serial.print(errorIntegral);
+    Serial.print("| Error Der:");
+    Serial.print(errorDeriv);
+    Serial.print("| Elapsed Time:");
+    Serial.println(elapsedPID);
+    */
+    // pwm += (int)(0.6*error + 6*errorIntegral + 0.3*errorDeriv);
+    pwm = (int)(0.008*error + 0.009*errorIntegral + 0.03*errorDeriv) + pwm;
+  }
+
+  if (pwm >= 255) {pwm = 255;}
+  if (pwm <= 0) {pwm = 0;}
+
+  analogWrite(tPin, pwm);
+  //analogWrite(tPin, 50);
+  
+  Serial.print("Current RPM: ");
+  Serial.print(TrueRPM);
+  Serial.print(" | Setpoint RPM: ");
+  Serial.print(SetpointRPM);
+  Serial.print(" | PWM: ");
+  Serial.println(pwm);
+  delay(200);
+}
+
+void tickCount() {
+  ticker++;
+  //firstTick++;
+}
