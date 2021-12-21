@@ -35,7 +35,7 @@ volatile unsigned long prevTicker = 0; // prev tickNum at last collection
 // PID
 unsigned long currentTimePID;
 unsigned long prevTimePID = 0;
-int elapsedPID;
+int elapsedPID; // used to be unsigned long but error - Arduino read first bit as sign
 double error = 0;
 double prevError = 0;
 double errorIntegral;
